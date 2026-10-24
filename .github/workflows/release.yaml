@@ -70,9 +70,14 @@ jobs:
           FERROCINE_VERSION_NAME: ${{ steps.version.outputs.tag }}
           FERROCINE_VERSION_CODE: ${{ steps.version.outputs.code }}
         run: |
+          # An unset secret reads as empty: say which, rather than fail in Gradle.
+          for v in KEYSTORE_BASE64 FERROCINE_KEYSTORE_PASSWORD FERROCINE_KEY_ALIAS FERROCINE_KEY_PASSWORD; do
+            [ -n "${!v}" ] || { echo "::error::the signing secret behind $v is empty"; exit 1; }
+          done
           export FERROCINE_KEYSTORE="$RUNNER_TEMP/release.jks"
           base64 -d <<< "$KEYSTORE_BASE64" > "$FERROCINE_KEYSTORE"
-          ./gradlew --console=plain testReleaseUnitTest assembleRelease
+          # Tests ran in CI before the commit reached master.
+          ./gradlew --console=plain assembleRelease
           rm "$FERROCINE_KEYSTORE"
           cp app/build/outputs/apk/release/app-release.apk "ferrocine-androidtv-$FERROCINE_VERSION_NAME.apk"
           "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner" verify --print-certs \
