@@ -1,0 +1,13 @@
+#!/bin/sh
+# Run Gradle in the build image: scripts/gradle assembleDebug test lint
+set -eu
+cd "$(dirname "$0")/.."
+image=ferrocine-android-build
+docker build -q -t "$image" docker >/dev/null
+exec docker run --rm \
+  -v "$PWD:/src" \
+  -v ferrocine-android-gradle:/root/.gradle \
+  -v ferrocine-android-home:/root/.android \
+  -e FERROCINE_VERSION_CODE -e FERROCINE_VERSION_NAME \
+  -e FERROCINE_KEYSTORE -e FERROCINE_KEYSTORE_PASSWORD -e FERROCINE_KEY_ALIAS -e FERROCINE_KEY_PASSWORD \
+  "$image" ./gradlew --console=plain "$@"

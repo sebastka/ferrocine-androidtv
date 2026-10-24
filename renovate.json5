@@ -1,0 +1,87 @@
+// Renovate configuration: https://docs.renovatebot.com/configuration-options/
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: [
+    "config:recommended",
+    // Keep GitHub Actions pinned by commit SHA, with the version as comment.
+    "helpers:pinGitHubActionDigests",
+  ],
+
+  timezone: "Europe/Paris",
+  // Nightly, for updates and for merging them.
+  schedule: ["* 0-5 * * *"],
+  automergeSchedule: ["* 0-5 * * *"],
+  prHourlyLimit: 0,
+  prConcurrentLimit: 10,
+
+  // Everything but majors merges itself once the required checks pass
+  // (GitHub auto-merge, squash, so commits stay signed and linear).
+  automerge: true,
+  platformAutomerge: true,
+  automergeStrategy: "squash",
+  // Let fresh releases settle before they are proposed (yanks, takedowns, compromised packages).
+  minimumReleaseAge: "3 days",
+
+  semanticCommits: "enabled",
+  vulnerabilityAlerts: {
+    labels: ["security"],
+    // Security fixes are proposed at once, not at night.
+    schedule: ["at any time"],
+    minimumReleaseAge: null,
+  },
+
+  packageRules: [
+    {
+      description: "Majors are reviewed by hand.",
+      matchUpdateTypes: ["major"],
+      automerge: false,
+      labels: ["major"],
+    },
+    {
+      description: "Pre-releases (alpha, beta, rc) are never proposed.",
+      matchManagers: ["gradle"],
+      ignoreUnstable: true,
+    },
+    {
+      description: "The Android Gradle plugin, Kotlin and Gradle move together; their minors can need code changes.",
+      groupName: "Android build tooling",
+      matchPackageNames: ["com.android.application", "org.jetbrains.kotlin.**", "gradle"],
+      matchUpdateTypes: ["minor"],
+      automerge: false,
+    },
+    {
+      groupName: "Gradle dependencies (non-major)",
+      matchManagers: ["gradle"],
+      matchUpdateTypes: ["minor", "patch"],
+      matchPackageNames: ["!com.android.application", "!org.jetbrains.kotlin.**"],
+    },
+    {
+      groupName: "GitHub Actions",
+      matchManagers: ["github-actions"],
+      matchDepTypes: ["action"],
+      matchUpdateTypes: ["minor", "patch", "digest", "pin", "pinDigest"],
+    },
+    {
+      description: "The build image's JDK follows the Android Gradle plugin's requirement.",
+      matchDatasources: ["docker"],
+      matchPackageNames: ["eclipse-temurin"],
+      matchUpdateTypes: ["major"],
+      enabled: false,
+    },
+    {
+      groupName: "Container images",
+      matchDatasources: ["docker"],
+      matchUpdateTypes: ["minor", "patch", "digest", "pin", "pinDigest"],
+    },
+  ],
+
+  customManagers: [
+    {
+      description: "yamllint version run by CI through pipx.",
+      customType: "regex",
+      managerFilePatterns: ["/^\\.github/workflows/.+\\.yaml$/"],
+      matchStrings: ["pipx run (?<depName>yamllint)==(?<currentValue>[\\d.]+)"],
+      datasourceTemplate: "pypi",
+    },
+  ],
+}

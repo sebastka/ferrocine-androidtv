@@ -1,0 +1,103 @@
+name: Release
+
+# Running this workflow by hand on master publishes a dated release: a Git
+# tag `YYYY-MM-DD` (`YYYY-MM-DD.1`, `.2`… for further releases the same day,
+# UTC) and a GitHub release with the signed APK. The APK's version name is the
+# tag and its version code the date (2026-10-24.1 → 2026102401), so each
+# release updates the previous one in place. The APK gets a signed build
+# provenance attestation.
+#
+# Signing needs these secrets: ANDROID_KEYSTORE (the keystore, base64),
+# ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD. Keep
+# the keystore safe: Android only installs updates signed with the same key.
+'on':
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Serialized, so that two releases never compute the same tag.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - id: version
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |-
+            if (context.ref !== 'refs/heads/master') {
+              core.setFailed(`releases are made from master, not ${context.ref}`);
+              return;
+            }
+            const { data: releases } = await github.rest.repos.listReleases({ ...context.repo, per_page: 1 });
+            const today = new Date().toISOString().slice(0, 10);
+            const [day, n] = (releases[0]?.tag_name ?? '').split('.');
+            const count = day === today ? Number(n ?? 0) + 1 : 0;
+            const tag = count ? `${today}.${count}` : today;
+            if (count > 99) {
+              core.setFailed('at most 100 releases a day');
+              return;
+            }
+            core.setOutput('tag', tag);
+            core.setOutput('code', `${today.replaceAll('-', '')}${String(count).padStart(2, '0')}`);
+            await core.summary.addHeading(`Release ${tag}`).write();
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-read-only: true
+      - name: Build the signed APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE }}
+          FERROCINE_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          FERROCINE_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          FERROCINE_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          FERROCINE_VERSION_NAME: ${{ steps.version.outputs.tag }}
+          FERROCINE_VERSION_CODE: ${{ steps.version.outputs.code }}
+        run: |
+          export FERROCINE_KEYSTORE="$RUNNER_TEMP/release.jks"
+          base64 -d <<< "$KEYSTORE_BASE64" > "$FERROCINE_KEYSTORE"
+          ./gradlew --console=plain testReleaseUnitTest assembleRelease
+          rm "$FERROCINE_KEYSTORE"
+          cp app/build/outputs/apk/release/app-release.apk "ferrocine-androidtv-$FERROCINE_VERSION_NAME.apk"
+          "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner" verify --print-certs \
+            "ferrocine-androidtv-$FERROCINE_VERSION_NAME.apk" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Attest build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ferrocine-androidtv-${{ steps.version.outputs.tag }}.apk
+      - name: Create the tag and the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          cat > notes.md <<EOF
+          ## Install
+
+          On the TV, with the Downloader app (or \`adb install\`), open:
+          https://github.com/$REPO/releases/download/$TAG/ferrocine-androidtv-$TAG.apk
+
+          The APK is attested by this repository's release workflow:
+
+          \`\`\`sh
+          gh attestation verify --repo $REPO ferrocine-androidtv-$TAG.apk
+          \`\`\`
+          EOF
+          gh release create "$TAG" --repo "$REPO" --target "$GITHUB_SHA" --title "$TAG" \
+            --notes-file notes.md --generate-notes "ferrocine-androidtv-$TAG.apk"

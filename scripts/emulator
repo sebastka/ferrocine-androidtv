@@ -1,0 +1,32 @@
+#!/bin/sh
+# A headless Google TV emulator in Docker (needs /dev/kvm), sharing the
+# host's network: the host is 10.0.2.2 inside it.
+#   scripts/emulator start     start it and wait for the boot
+#   scripts/emulator install   install the debug APK and launch it
+#   scripts/emulator adb …     any adb command (shell input keyevent …)
+#   scripts/emulator shot F    save a screenshot to F
+#   scripts/emulator stop
+set -eu
+cd "$(dirname "$0")/.."
+name=ferrocine-tv-emulator
+case "${1:-}" in
+start)
+  docker build -q -t ferrocine-android-build docker >/dev/null
+  docker build -q -t ferrocine-tv-emulator -f docker/emulator.Dockerfile docker >/dev/null
+  docker rm -f "$name" >/dev/null 2>&1 || true
+  docker run -d --name "$name" --device /dev/kvm --network host -v "$PWD:/src" ferrocine-tv-emulator >/dev/null
+  docker exec "$name" sh -c 'adb wait-for-device && until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = 1 ]; do sleep 2; done'
+  echo booted ;;
+install)
+  docker exec "$name" adb install -r /src/app/build/outputs/apk/debug/app-debug.apk
+  docker exec "$name" adb shell am start -n io.github.sebastka.ferrocine/.MainActivity ;;
+adb)
+  shift
+  docker exec "$name" adb "$@" ;;
+shot)
+  docker exec "$name" adb exec-out screencap -p > "$2" ;;
+stop)
+  docker rm -f "$name" >/dev/null ;;
+*)
+  sed -n 2,9p "$0"; exit 2 ;;
+esac
