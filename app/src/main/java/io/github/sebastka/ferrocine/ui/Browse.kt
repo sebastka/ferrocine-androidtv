@@ -2,6 +2,8 @@ package io.github.sebastka.ferrocine.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -47,7 +49,10 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.NavigationDrawer
 import androidx.tv.material3.NavigationDrawerItem
+import androidx.tv.material3.ListItem
+import androidx.tv.material3.Switch
 import androidx.tv.material3.Text
+import io.github.sebastka.ferrocine.player.DeviceCapabilities
 import io.github.sebastka.ferrocine.BuildConfig
 import io.github.sebastka.ferrocine.api.Item
 import io.github.sebastka.ferrocine.api.Library
@@ -255,7 +260,10 @@ private fun SettingsPage() {
     val account = app.account.value ?: return
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
-    Column(Modifier.padding(48.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(
+        Modifier.verticalScroll(rememberScrollState()).padding(48.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
         Text("Settings", style = MaterialTheme.typography.headlineSmall)
         Text("Signed in as ${account.userName} on ${account.server.toString().trimEnd('/')}")
         Text(
@@ -274,6 +282,27 @@ private fun SettingsPage() {
                 }
             },
         ) { Text("Sign out") }
+        Spacer(Modifier.height(16.dp))
+        Text("Audio passthrough", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Send these formats undecoded over HDMI, for a soundbar or receiver that decodes them. " +
+                "Leave off if you hear noise: the server then converts them.",
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+            modifier = Modifier.width(720.dp),
+        )
+        for ((format, label) in DeviceCapabilities.OPT_IN) {
+            var on by remember { mutableStateOf(app.passthrough(format)) }
+            ListItem(
+                selected = false,
+                onClick = {
+                    on = !on
+                    app.setPassthrough(format, on)
+                },
+                headlineContent = { Text(label) },
+                trailingContent = { Switch(checked = on, onCheckedChange = null) },
+                modifier = Modifier.width(480.dp),
+            )
+        }
         Spacer(Modifier.height(24.dp))
         Text("Ferrocine for Android TV ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
