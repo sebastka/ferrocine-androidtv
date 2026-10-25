@@ -57,6 +57,19 @@ class FerrocineApp : Application(), SingletonImageLoader.Factory {
     /** For work that outlives a screen (the last progress report, stopping a transcode). */
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
+    /** Settings of this TV, kept across sign-outs. */
+    private val settings by lazy { getSharedPreferences("settings", Context.MODE_PRIVATE) }
+
+    /**
+     * Formats sent undecoded to the HDMI sink when it claims them. Off by
+     * default for DTS and TrueHD: many TVs claim them and then play noise.
+     */
+    fun passthrough(format: String): Boolean = settings.getBoolean("passthrough_$format", false)
+
+    fun setPassthrough(format: String, on: Boolean) {
+        settings.edit().putBoolean("passthrough_$format", on).apply()
+    }
+
     /** A server typed but not signed in to yet. */
     var pendingServer: HttpUrl? = null
 

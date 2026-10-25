@@ -107,7 +107,7 @@ private fun Player(item: Item, resume: Boolean, onExit: () -> Unit, onNext: (Ite
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val media = item.media
-    val caps = remember { DeviceCapabilities.probe(context) }
+    val caps = remember { DeviceCapabilities.probe(context, app::passthrough) }
     val exo = remember {
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(DefaultMediaSourceFactory(OkHttpDataSource.Factory(app.http)))
@@ -431,7 +431,10 @@ private fun Player(item: Item, resume: Boolean, onExit: () -> Unit, onNext: (Ite
                     menu = false
                     if (a.index == audio?.index) return@TrackMenu
                     audio = a
-                    if (playback?.hls == false) applyTracks(exo.currentTracks) else restart()
+                    // The player switches in the file only to audio this TV plays;
+                    // for the rest, the server converts it.
+                    val playable = caps.audioCodecs.any { it.equals(a.codec, ignoreCase = true) }
+                    if (playback?.hls == false && playable) applyTracks(exo.currentTracks) else restart()
                 },
                 onSubtitle = { s ->
                     menu = false

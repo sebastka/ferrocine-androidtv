@@ -52,17 +52,27 @@ object DeviceCapabilities {
         "truehd" to C.ENCODING_DOLBY_TRUEHD,
     )
 
+    /**
+     * Passthrough formats used only when the user says the sink really
+     * decodes them: TVs often claim DTS and then play the bitstream as noise.
+     */
+    val OPT_IN = listOf("dts" to "DTS", "truehd" to "Dolby TrueHD")
+
     /** PCM in Matroska and MP4 needs no decoder. */
     private val PCM = listOf("pcm_s16le", "pcm_s24le", "pcm_s16be", "pcm_f32le")
 
-    fun probe(context: Context): Capabilities {
+    /** [optedIn]: the [OPT_IN] formats the user allowed. */
+    fun probe(context: Context, optedIn: (String) -> Boolean): Capabilities {
         val decoders = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
             .filter { !it.isEncoder }
             .flatMap { it.supportedTypes.map(String::lowercase) }
             .toSet()
         val video = VIDEO.filter { it.second in decoders }.map { it.first }
         val sink = AudioCapabilities.getCapabilities(context, AudioAttributes.DEFAULT, null, emptyList())
-        val passthrough = PASSTHROUGH.filter { sink.supportsEncoding(it.second) }.map { it.first }
+        val passthrough = PASSTHROUGH
+            .filter { (name, _) -> OPT_IN.none { it.first == name } || optedIn(name) }
+            .filter { sink.supportsEncoding(it.second) }
+            .map { it.first }
         val audio = (AUDIO.filter { it.second in decoders }.map { it.first } + passthrough + PCM).distinct()
         return Capabilities(
             containers = CONTAINERS,
