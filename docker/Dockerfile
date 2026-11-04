@@ -1,6 +1,6 @@
 # The build environment: JDK 21 and the Android SDK. Used by scripts/gradle
 # and CI, so a build needs Docker only.
-FROM eclipse-temurin:21.0.12_8-jdk-noble
+FROM eclipse-temurin:21.0.13_9-jdk-noble
 
 ARG CMDLINE_TOOLS=16111833
 ENV ANDROID_HOME=/opt/android-sdk
